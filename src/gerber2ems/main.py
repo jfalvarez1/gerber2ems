@@ -4,7 +4,6 @@
 
 import argparse
 import logging
-import shutil
 import sys
 from pathlib import Path
 from typing import Any
@@ -14,9 +13,10 @@ import numpy as np
 
 import gerber2ems.importer as importer
 from gerber2ems.config import Config
-from gerber2ems.constants import BASE_DIR, DEFAULT_CONFIG_PATH, GEOMETRY_DIR, GEOMETRY_FILE, RESULTS_DIR, SIMULATION_DIR
+from gerber2ems.constants import BASE_DIR, DEFAULT_CONFIG_PATH, GEOMETRY_FILE, RESULTS_DIR, SIMULATION_DIR
 from gerber2ems.postprocess import Postprocesor
 from gerber2ems.preprocess_vertical import preprocess_vertical
+from gerber2ems.workspace import prepare_outputs
 
 logger = logging.getLogger(__name__)
 cfg = Config()
@@ -38,22 +38,37 @@ def main() -> None:
         logger.info('No steps selected. Exiting. To select steps use "-g", "-s", "-p", "-a" flags')
         sys.exit(0)
 
-    create_dir(BASE_DIR)
+    if (args.simulate or args.all) and not any(port.excite for port in cfg.all_ports):
+        logger.error("Simulation requires at least one excited port")
+        sys.exit(2)
+    stages = []
+    if args.geometry or args.all:
+        stages.append("geometry")
+    if args.simulate or args.all:
+        stages.append("simulation")
+    extra_output = None
+    if args.postprocess or args.all:
+        if args.output.absolute() == RESULTS_DIR.absolute():
+            stages.append("results")
+        else:
+            extra_output = args.output
+    try:
+        prepare_outputs(BASE_DIR, stages, args.overwrite, extra_output)
+    except (ValueError, OSError) as exc:
+        logger.error("Output preparation failed: %s", exc)
+        sys.exit(2)
 
     if args.vertical or args.all:
         preprocess_vertical()
 
     if args.geometry or args.all:
         logger.info("Creating geometry")
-        create_dir(GEOMETRY_DIR, cleanup=True)
         geometry()
     if args.simulate or args.all:
         logger.info("Running simulation")
-        create_dir(SIMULATION_DIR, cleanup=True)
         simulate()
     if args.postprocess or args.all:
         logger.info("Postprocessing")
-        create_dir(RESULTS_DIR, cleanup=True)
         postprocess()
 
 
@@ -89,6 +104,8 @@ def simulate() -> None:
     """Run the simulation."""
     from gerber2ems.simulation import Simulation
 
+    if not any(port.excite for port in cfg.all_ports):
+        raise ValueError("Simulation requires at least one excited port")
     for index, port in enumerate(cfg.all_ports):
         if port.excite:
             sim = Simulation(GEOMETRY_FILE)
@@ -113,6 +130,12 @@ def simulate() -> None:
             for i, _ in enumerate(cfg.all_ports):
                 post.add_port_data(i, index, incident[i], reflected[i])
 
+    # Preserve the complex waves before deriving ratios. They allow an independent
+    # extraction audit without repeating FDTD or trusting rounded CSV exports.
+    np.savez_compressed(
+        SIMULATION_DIR / "port-waves.npz", frequency_hz=frequencies,
+        incident=post.incident, reflected=post.reflected, reference_ohm=post.reference_zs,
+    )
     post.calculate_sparams()
     post.sparam_to_file()
 
@@ -143,6 +166,10 @@ def parse_arguments() -> argparse.Namespace:
         "-c", "--config", metavar="CONFIG_FILE", help="Path to config file [default: `./simulation.json`]"
     )
     parser.add_argument("--update-config", action="store_true", help="Add missing fields to config file")
+    parser.add_argument("--overwrite", action="store_true",
+                        help="Replace selected ems stage directories; never deletes custom plot destinations")
+    parser.add_argument("--threads", type=int, default=4,
+                        help="Positive openEMS worker count (default: 4)")
     parser.add_argument("-g", "--geometry", action="store_true", help="Create geometry")
     parser.add_argument("-s", "--simulate", action="store_true", help="Run simulation")
     parser.add_argument("-p", "--postprocess", action="store_true", help="Postprocess the data")
@@ -176,7 +203,10 @@ def parse_arguments() -> argparse.Namespace:
     group.add_argument("-d", "--debug", action="store_true", dest="debug")
     group.add_argument("-l", "--log", choices=["DEBUG", "INFO", "WARNING", "ERROR"], dest="log_level")
 
-    return parser.parse_args()
+    args = parser.parse_args()
+    if args.threads < 1:
+        parser.error("--threads must be positive")
+    return args
 
 
 def setup_logging(args: Any) -> None:
@@ -206,14 +236,6 @@ def setup_logging(args: Any) -> None:
     for name in to_disable:
         disabled_logger = logging.getLogger(name)
         disabled_logger.setLevel(logging.ERROR)
-
-
-def create_dir(path: Path, cleanup: bool = False) -> None:
-    """Create a directory if doesn't exist."""
-    if cleanup and path.exists():
-        shutil.rmtree(path)
-    if not path.exists():
-        path.mkdir(parents=True)
 
 
 if __name__ == "__main__":

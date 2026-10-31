@@ -453,9 +453,11 @@ class Simulation:
         logger.info("Starting simulation")
         cwd = Path.cwd()
         self.fdtd.SetOverSampling(cfg.arguments.oversampling)
-        with LogFilter():
-            self.fdtd.Run(str(SIMULATION_DIR / str(excited_port_number)))
-        os.chdir(cwd)  # OpenEMS changes cwd, restore original
+        try:
+            with LogFilter():
+                self.fdtd.Run(str(SIMULATION_DIR / str(excited_port_number)), numThreads=cfg.arguments.threads)
+        finally:
+            os.chdir(cwd)  # openEMS also changes cwd when a run fails.
 
     def save_geometry(self) -> None:
         """Save geometry to file."""

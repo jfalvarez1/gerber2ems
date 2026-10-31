@@ -68,6 +68,11 @@ docker run -w "$PWD" --mount type=bind,source="$PWD",target="$PWD" gerber2ems -a
 
 ## Usage
 
+This fork's [maintenance and retention guide](docs/fork-maintenance.md) describes
+the output safeguards, raw-wave archive and regression checks. Existing outputs
+are preserved by default; use a fresh run folder or explicitly pass `--overwrite`.
+Use `--threads N` to set the openEMS worker count.
+
 For quick lookup, use `gerber2ems --help`.
 
 To simulate a trace, follow these steps:

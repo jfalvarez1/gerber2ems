@@ -84,7 +84,9 @@ def gbr_to_png(edge_filename: Path, gerber_filename: Path) -> None:
         "-a",
     ]
 
-    subprocess.run(gerbv_command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    # Keep gerbv's diagnostic and stop here on failure, rather than reporting a
+    # misleading missing PNG or reusing an old raster from an earlier invocation.
+    subprocess.run(gerbv_command, stdout=subprocess.DEVNULL, check=True)
 
     not_cropped_image = PIL.Image.open(not_cropped_name)
     mono_img = not_cropped_image.getchannel("B")
