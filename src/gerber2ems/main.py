@@ -94,7 +94,6 @@ def geometry() -> None:
     sim.add_substrates()
     if cfg.arguments.export_field is not None:
         sim.add_dump_boxes()
-    sim.set_boundary_conditions(pml=False)
     sim.add_vias()
     sim.add_ports()
     sim.save_geometry()
@@ -136,6 +135,10 @@ def simulate() -> None:
         SIMULATION_DIR / "port-waves.npz", frequency_hz=frequencies,
         incident=post.incident, reflected=post.reflected, reference_ohm=post.reference_zs,
     )
+    for index, port in enumerate(cfg.all_ports):
+        if port.excite and (not np.isfinite(post.incident[:, index, :]).all()
+                            or not np.isfinite(post.reflected[:, index, :]).all()):
+            raise ValueError(f"Nonfinite port waves from excitation {index}; raw data retained, no CSV exported")
     post.calculate_sparams()
     post.sparam_to_file()
 
@@ -170,6 +173,8 @@ def parse_arguments() -> argparse.Namespace:
                         help="Replace selected ems stage directories; never deletes custom plot destinations")
     parser.add_argument("--threads", type=int, default=4,
                         help="Positive openEMS worker count (default: 4)")
+    parser.add_argument("--boundary", choices=["PML_8", "MUR"], default="PML_8",
+                        help="Absorbing boundary on all six faces (default: PML_8)")
     parser.add_argument("-g", "--geometry", action="store_true", help="Create geometry")
     parser.add_argument("-s", "--simulate", action="store_true", help="Run simulation")
     parser.add_argument("-p", "--postprocess", action="store_true", help="Postprocess the data")

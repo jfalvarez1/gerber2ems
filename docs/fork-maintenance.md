@@ -23,6 +23,20 @@ changing filesystem paths. This CLI is not an untrusted multi-user job service.
 
 ## Execution and diagnostics
 
+Every fresh FDTD instance now initializes all six absorbing boundaries,
+including when loading saved geometry. `--boundary PML_8` is the default;
+`--boundary MUR` explicitly selects first-order Mur boundaries. Previously, boundaries were set only on
+the geometry-stage solver; `geometry.xml` contains CSXCAD geometry, so the later
+simulation solver silently used openEMS's default PEC boundaries. This is a
+physics-affecting correction. Preserve old runs with their source revision.
+PML occupies the outer eight mesh cells on each face; its geometry and spacing
+need review, not just a switch of boundary name. See the
+[openEMS boundary documentation](https://docs.openems.de/en/stable/concepts/bc.html).
+The tested short/long stub MUR experiments produced nonfinite energy. The run
+now rejects native nonfinite-energy diagnostics and nonfinite port waves instead
+of publishing derived CSVs. Files already produced by the native solver remain
+available for diagnosis.
+
 `--threads N` limits openEMS workers (default 4; positive integer). The mesher
 and numerical libraries may use separate workers. openEMS's changed working
 directory is restored even if it raises an exception. Rasterizer failures keep
@@ -52,9 +66,10 @@ extraction audit. Do not silently reinterpret them as calibrated measurements.
 Run `PYTHONPATH=src python -m unittest discover -s tests -v` on Linux. Windows
 PowerShell: set `$env:PYTHONPATH='src'`, then run the same Python command. CI runs
 these without native dependencies; it does **not** claim an FDTD validation run.
-Two additional runtime boundary tests run when the native stack is installed:
-solver failure restores the working directory, and gerbv failure stops before
-opening an image. CI without that stack reports those tests as skipped.
+Four additional runtime boundary tests run when the native stack is installed:
+new/loaded solvers initialize absorbing boundaries, nonfinite native energy is
+rejected, solver failure restores the working directory, and gerbv failure stops
+before opening an image. CI without that stack reports those tests as skipped.
 For solver changes, also run a documented fixture with exact input hashes,
 solver commits, environment versions, raw data and independent physical checks.
 

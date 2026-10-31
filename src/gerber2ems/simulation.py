@@ -38,6 +38,7 @@ class LogFilter:
 
         self.old_stdout = os.dup(self.stdout_fd)
         self.old_stderr = os.dup(self.stderr_fd)
+        self.invalid_energy = False
 
     def __enter__(self) -> Self:
         """Force both C++ stdout and stderr to stream into the pipe."""
@@ -58,11 +59,15 @@ class LogFilter:
             self.filter_thread.join()
         os.close(self.old_stdout)
         os.close(self.old_stderr)
+        if exc_type is None and self.invalid_energy:
+            raise RuntimeError("openEMS reported nonfinite field energy; run rejected, raw files retained")
 
     def filter_gerber_primitive_warnings(self) -> None:
         """Filter unwanted warnings and write logs back."""
         with os.fdopen(self.pipe_r, "r", errors="ignore") as f:
             for line in f:
+                if re.search(r"Energy:\s*~\s*[+-]?(?:inf|nan)\b", line, flags=re.IGNORECASE):
+                    self.invalid_energy = True
                 if "Unused primitive" in line and "Gerber" in line:
                     continue
                 os.write(self.old_stdout, line.encode("utf-8"))
@@ -83,6 +88,10 @@ class Simulation:
             sim_steps = 1e5
         self.fdtd = openEMS.openEMS(NrTS=sim_steps)
         self.fdtd.SetCSX(self.csx)
+        # geometry.xml stores CSXCAD geometry, not FDTD boundary conditions.
+        # Every fresh solver (including one loading that file) needs absorbing
+        # boundaries; otherwise openEMS silently defaults to a closed PEC box.
+        self.set_boundary_conditions(pml=getattr(cfg.arguments, "boundary", "PML_8") == "PML_8")
         self.grid.SetDeltaUnit(BASE_UNIT / UNIT_MULTIPLIER)
 
         self.ports: List[openEMS.ports.MSLPort | openEMS.ports.LumpedPort] = []
