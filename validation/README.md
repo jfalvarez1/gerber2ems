@@ -2,7 +2,58 @@
 
 The `fix/absorbing-boundary-validation` branch is experimental. Stable `main`
 contains output-retention and packaging improvements. The boundary change is
-held here because both tested fixtures reached the time-step cap.
+held here because the original fixtures reached the time-step cap and the later
+padded short-stub experiment still has unresolved measurement/model differences.
+
+## Follow-up: preserve the local mesh and move PML off the board
+
+`audit_domain.py` found the eight-cell PML overlapped the substrate and copper
+in x/y and touched the copper faces in z. The interior z interval was only
+−0.12 to 0 mm. `run_boundary_case.py` adds vacuum cells outside the original grid;
+every original mesh coordinate, board primitive and Gaussian stimulus is kept.
+It is a diagnostic tool, not a new production mesher or automatic accuracy fix.
+
+With ten additional cells on every face, the forward excitation reached the
+−60 dB stopping criterion in 37,694 steps instead of hitting the old 200,960-step
+cap. The reverse excitation also completed. Fourteen additional cells reached
+the same criterion in 32,882 steps. Comparing the two forward runs gives maximum
+absolute complex changes of 0.00003277 in S11 and 0.00011631 in S21.
+
+Combining both excitations from the identical ten-cell-padded model using
+power-normalized **B = S A** gives a maximum singular value of **1.0000344** and
+maximum reciprocity discrepancy |S12−S21| of **0.0001369**. The small excess above
+one is reported without passivity enforcement. Independent column ratios would
+give 1.03294, illustrating why they should not be mistaken for a normalized
+multiport network. The incident-wave matrix condition number is at most 1.0682.
+
+The full-matrix S11 complex RMSE against 655 overlapping published VNA samples
+is **0.11634**. This is not a validated hardware model: local-mesh convergence,
+loss and reference planes remain unresolved. The placement CSV lists R4 as
+`R_0R_0201`, but the imported geometry has no link across those pads. The measured
+population state is unknown. The fixture name refers to the shorter physical
+stub; do not interpret it as proof of an electrically short-circuited termination.
+No link was silently added to make the simulated curve agree with measurement.
+
+Run against an archived copy of the original PML fixture geometry:
+
+```console
+python validation/run_boundary_case.py --source /runs/stub-short-pml --output /runs/padded10 --padding 10
+python validation/run_boundary_case.py --source /runs/padded10 --output /runs/reverse10 --padding 0 --excitation 1
+python validation/run_boundary_case.py --source /runs/stub-short-pml --output /runs/padded14 --padding 14
+python validation/review_padding.py --forward /runs/padded10 --reverse /runs/reverse10 --larger /runs/padded14 --capped /runs/stub-short-pml --vna examples/stub_short/vna.csv --output /runs/review
+python validation/plot_field.py --field /runs/padded10/ems/simulation/0/electric_xy.h5 --geometry /runs/padded10/ems/geometry/geometry.xml --output /runs/field-review
+python -m unittest discover -s validation -p 'test_*.py' -v
+```
+
+The runner needs native openEMS/CSXCAD and the installed fork; the field plot
+also needs h5py. The review refuses to combine columns with different geometry,
+configuration, frequency samples or reference impedances. Raw complex waves,
+native logs and geometry are preserved. Its E-field figure is a real 3 GHz
+FDTD dump at z = −0.075 mm, normalized only for display. HDF5 Cartesian mesh
+coordinates are already in metres; do not apply `mesh_scaling` a second time.
+The field color is not calibrated absolute field strength or an EMC result.
+
+The following section retains the earlier failed controls for traceability.
 
 ## What was run
 

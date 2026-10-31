@@ -60,11 +60,13 @@ def run_data(root):
     log = (root / ("first-port.log" if partial else "run.log")).read_text()
     samples = []
     previous = -1
-    for match in re.finditer(r"Timestep:\s*(\d+).*?Energy:\s*~\s*([\d.eE+-]+|inf|nan)\s*\(\s*([\d.eE+-]+)dB\)", log):
+    for match in re.finditer(
+        r"Timestep:\s*(\d+).*?Energy:\s*~\s*([\d.eE+-]+|inf|nan)\s*\(\s*([+-]?\s*[\d.eE+-]+)dB\)", log
+    ):
         step, energy = int(match[1]), float(match[2])
         if step < previous:
             break  # Plot the first excitation only; never join separate decays.
-        samples.append((step, energy, float(match[3])))
+        samples.append((step, energy, float(match[3].replace(" ", ""))))
         previous = step
     divergent = bool(re.search(r"Energy:\s*~\s*[+-]?(?:inf|nan)\b", log, re.IGNORECASE))
     capped = "Max. number of timesteps was reached" in log
@@ -89,6 +91,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     for name in ("before", "after", "vna", "output"):
         parser.add_argument("--" + name, type=Path, required=True)
+    parser.add_argument("--before-label", default="Before")
+    parser.add_argument("--after-label", default="After")
     args = parser.parse_args()
     if args.output.exists():
         parser.error("Choose a new output directory; existing evidence is not overwritten")
@@ -133,7 +137,7 @@ def main():
             20 * np.log10(np.maximum(abs(ratio[:, 0, 0]), 1e-7)),
             color=color,
             lw=1.6,
-            label=f"{label} ({'PEC' if label == 'Before' else 'PML_8'}) — {status}",
+            label=f"{args.before_label if label == 'Before' else args.after_label} — {status}",
         )
         axes[1].plot(f / 1e9, error, color=color, label=f"{label}: complex RMSE {metrics['complex_s11_rmse']:.3f}")
         np.savetxt(
