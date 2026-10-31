@@ -7,6 +7,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -14,3 +16,7 @@ jobs:
         env:
           PYTHONPATH: src
         run: python -m unittest discover -s tests -v
+      - name: Build the distributable without native dependencies
+        run: python -m pip wheel --no-deps --wheel-dir /tmp/gerber2ems-wheels .
+      - name: Verify packaged resources and source version
+        run: python tests/check_wheel.py /tmp/gerber2ems-wheels/*.whl

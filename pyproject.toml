@@ -37,7 +37,9 @@ dependencies = [
     "vtk==9.7.0",
 ]
 [tool.setuptools.package-data]
-gerber2ems = ["*.mplstyle"]
+gerber2ems = ["*.mplstyle", "*.yml"]
+
+[tool.setuptools_scm]
 
 [project.optional-dependencies]
 dev = ["mypy==1.19.1", "ruff==0.14.14", "black==25.12.0"]
